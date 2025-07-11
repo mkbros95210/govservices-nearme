@@ -41,7 +41,7 @@ const BottomNavBar: React.FC = () => {
             <NavLink
               key={item.name}
               to={item.href}
-              className={({ isNavLinkActive }) =>
+              className={({ isActive }) =>
                 `flex flex-col items-center justify-center gap-1 transition-colors duration-200 ${
                   (item.href === '/' ? isHomeActive : isActive)
                     ? 'text-cyan-500 dark:text-cyan-400'
@@ -102,3 +102,4 @@ function LoginIcon(props: { className?: string }) {
 }
 
 export default BottomNavBar;
+
