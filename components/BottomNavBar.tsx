@@ -5,8 +5,10 @@ import { useAuth } from '../context/AuthContext';
 const { NavLink, useLocation } = ReactRouterDOM as any;
 
 const BottomNavBar: React.FC = () => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth(); // ✅ ADDED loading
   const location = useLocation();
+
+  if (loading) return null; // ✅ ADDED loading check
 
   const getFilteredNavItems = () => {
     if (user) {
@@ -98,6 +100,5 @@ function LoginIcon(props: { className?: string }) {
         </svg>
     )
 }
-
 
 export default BottomNavBar;
