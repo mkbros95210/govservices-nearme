@@ -48,6 +48,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchUserAndProfile = useCallback(async (sessionUser: any | null) => {
     setUser(sessionUser);
     if (sessionUser) {
+        // Only update profile on success, don't clear it on failure
+        // to prevent logging out on transient network errors.
         try {
             const { data, error } = await supabase
                 .from('profiles')
@@ -56,17 +58,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 .single();
 
             if (error) {
-                console.error('Error fetching profile:', error.message || error);
-                setProfile(null);
+                // Log error but do not wipe profile. The user is still authenticated.
+                console.error('Error fetching profile on auth state change:', error.message || error);
             } else {
                 setProfile(data as Profile);
                 await fetchNotifications(); // Fetch notifications after getting profile
             }
         } catch(e: any) {
-            console.error('Error in profile fetch logic:', e.message || e);
-            setProfile(null);
+            console.error('Exception in profile fetch logic:', e.message || e);
         }
     } else {
+        // User is definitively logged out, so clear everything.
         setProfile(null);
         setNotifications([]);
     }
