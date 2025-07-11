@@ -72,32 +72,33 @@ export const ServiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 .order('display_order', { ascending: true })
        ]);
 
-      if (servicesRes.error) throw servicesRes.error;
-      if (settingsRes.error) throw settingsRes.error;
-      if (bannersRes.error) throw bannersRes.error;
+      // If there's an error in any of the requests, log it but DO NOT wipe the state.
+      // Only proceed to set state if all requests were successful to avoid partial data.
+      if (servicesRes.error || settingsRes.error || bannersRes.error) {
+          console.error("Failed to fetch full service data, preserving existing state:", {
+              services: servicesRes.error, 
+              settings: settingsRes.error, 
+              banners: bannersRes.error
+            });
+      } else {
+        // All fetches succeeded, so we can safely update the state.
+        const flatServices = servicesRes.data as Service[];
+        const tree = buildServiceTree(flatServices);
+        setAllServices(tree);
+        
+        const appSettings = (settingsRes.data?.value as AppSettings) || { homepage_service_limit: 8 };
+        setSettings(appSettings);
 
-      // Process Services
-      const flatServices = servicesRes.data as Service[];
-      const tree = buildServiceTree(flatServices);
-      setAllServices(tree);
-      
-      // Process Settings
-      const appSettings = (settingsRes.data?.value as AppSettings) || { homepage_service_limit: 8 };
-      setSettings(appSettings);
-
-      const featured = flatServices
-        .filter(s => s.is_featured && !s.parent_id)
-        .slice(0, appSettings.homepage_service_limit);
-      setFeaturedServices(featured);
-      
-      // Process Banners
-      setPromoBanners(bannersRes.data as PromoBannerSlide[]);
+        const featured = flatServices
+          .filter(s => s.is_featured && !s.parent_id)
+          .slice(0, appSettings.homepage_service_limit);
+        setFeaturedServices(featured);
+        
+        setPromoBanners(bannersRes.data as PromoBannerSlide[]);
+      }
 
     } catch (err: any) {
-      console.error('Error fetching services/settings:', err.message || 'An unknown error occurred.');
-      setAllServices([]);
-      setFeaturedServices([]);
-      setPromoBanners([]);
+      console.error('Critical error fetching services/settings:', err.message || 'An unknown error occurred.');
     } finally {
       setLoading(false);
     }
@@ -122,3 +123,4 @@ export const ServiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     </ServiceContext.Provider>
   );
 };
+
