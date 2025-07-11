@@ -2,7 +2,15 @@ useEffect(() => {
   setLoading(true);
 
   const getInitialSession = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      console.error('❌ Error getting initial session:', sessionError);
+    }
+
     const sessionUser = session?.user ?? null;
     setUser(sessionUser);
 
@@ -15,7 +23,7 @@ useEffect(() => {
         .single();
 
       if (profileError) {
-        console.error('Error fetching profile:', profileError);
+        console.error('❌ Error fetching profile:', profileError);
         setProfile(null);
         setNotifications([]);
       } else {
@@ -55,7 +63,7 @@ useEffect(() => {
           .single();
 
         if (profileError) {
-          console.error('Error fetching profile:', profileError);
+          console.error('❌ Error fetching profile (onAuthChange):', profileError);
           setProfile(null);
           setNotifications([]);
         } else {
@@ -80,6 +88,7 @@ useEffect(() => {
     authListener?.subscription.unsubscribe();
   };
 }, []);
+
 
 
 
