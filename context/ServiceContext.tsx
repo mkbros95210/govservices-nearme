@@ -1,7 +1,9 @@
 
+
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import { Service, AppSettings, PromoBannerSlide } from '../types';
+import { useAuth } from './AuthContext';
 
 interface ServiceContextType {
   allServices: Service[];
@@ -50,9 +52,11 @@ export const ServiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [settings, setSettings] = useState<AppSettings>({ homepage_service_limit: 8 });
   const [promoBanners, setPromoBanners] = useState<PromoBannerSlide[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Wait for authentication to complete before fetching services
+  const { loading: authLoading } = useAuth();
 
   const fetchServicesAndSettings = useCallback(async () => {
-    setLoading(true);
     try {
        const [servicesRes, settingsRes, bannersRes] = await Promise.all([
             supabase
@@ -72,8 +76,6 @@ export const ServiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 .order('display_order', { ascending: true })
        ]);
 
-      // If there's an error in any of the requests, log it but DO NOT wipe the state.
-      // Only proceed to set state if all requests were successful to avoid partial data.
       if (servicesRes.error || settingsRes.error || bannersRes.error) {
           console.error("Failed to fetch full service data, preserving existing state:", {
               services: servicesRes.error, 
@@ -81,7 +83,6 @@ export const ServiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
               banners: bannersRes.error
             });
       } else {
-        // All fetches succeeded, so we can safely update the state.
         const flatServices = servicesRes.data as Service[];
         const tree = buildServiceTree(flatServices);
         setAllServices(tree);
@@ -99,14 +100,21 @@ export const ServiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     } catch (err: any) {
       console.error('Critical error fetching services/settings:', err.message || 'An unknown error occurred.');
-    } finally {
-      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchServicesAndSettings();
-  }, [fetchServicesAndSettings]);
+    // This effect orchestrates the loading state of ServiceContext.
+    // It is considered "loading" if the authentication is still loading.
+    if (authLoading) {
+        setLoading(true);
+    } else {
+        // Once authentication is complete, fetch the service data.
+        fetchServicesAndSettings().finally(() => {
+            setLoading(false); // Set loading to false only after the fetch is complete.
+        });
+    }
+  }, [authLoading, fetchServicesAndSettings]);
 
   const value = {
     allServices,
