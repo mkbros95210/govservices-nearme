@@ -23,11 +23,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchUserAndProfile = useCallback(async (sessionUser: any) => {
-    setUser(sessionUser);
+  // This effect runs once on mount and sets up the auth listener.
+  // It is the single source of truth for the user's session and profile.
+  useEffect(() => {
+    setLoading(true);
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const sessionUser = session?.user ?? null;
+      setUser(sessionUser);
 
-    if (sessionUser) {
-      try {
+      if (sessionUser) {
+        // User is logged in, fetch their profile
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('*')
@@ -35,71 +40,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .single();
 
         if (profileError) {
-          throw new Error(`Failed to fetch profile: ${profileError.message}`);
+          console.error('Error fetching profile:', profileError);
+          // If profile fetch fails, we can't know their role.
+          // Treat them as a non-admin user, but keep them logged in.
+          setProfile(null); 
+          setNotifications([]);
+        } else {
+          setProfile(profileData as Profile);
+          // Profile fetch was successful, now fetch notifications
+          const { data: notificationsData } = await supabase
+            .from('notifications')
+            .select('*')
+            .eq('user_id', sessionUser.id)
+            .order('created_at', { ascending: false });
+          setNotifications(notificationsData || []);
         }
-        
-        setProfile(profileData as Profile);
-        
-        const { data: notificationsData, error: notificationsError } = await supabase
-          .from('notifications')
-          .select('*')
-          .eq('user_id', sessionUser.id)
-          .order('created_at', { ascending: false });
-
-        if (notificationsError) {
-          console.error('Failed to fetch notifications:', notificationsError.message);
-        }
-        setNotifications(notificationsData || []);
-
-      } catch (error) {
-        console.error(error);
-        // On failure, ensure state is clean for this user
+      } else {
+        // User is logged out, clear all data
         setProfile(null);
         setNotifications([]);
       }
-    } else {
-      // User is logged out, clear all data
-      setProfile(null);
-      setNotifications([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    // This effect runs once on mount to set up the auth listener.
-    // It is the single source of truth for auth state.
-    setLoading(true);
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        await fetchUserAndProfile(session?.user ?? null);
-        setLoading(false);
-      }
-    );
+      
+      // Set loading to false only after all async operations for the auth state are complete
+      setLoading(false);
+    });
 
     return () => {
+      // Cleanup the listener when the component unmounts
       authListener.subscription.unsubscribe();
     };
-  }, [fetchUserAndProfile]);
-  
-  const refetchAll = useCallback(async () => {
-    if (user) {
-        setLoading(true);
-        await fetchUserAndProfile(user);
-        setLoading(false);
-    }
-  }, [user, fetchUserAndProfile]);
-  
-  const justFetchNotifications = useCallback(async () => {
+  }, []); // Empty dependency array ensures this effect runs only once
+
+  const fetchNotifications = useCallback(async () => {
       if (!user) return;
-      const { data: notificationsData, error: notificationsError } = await supabase
+      const { data } = await supabase
           .from('notifications')
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
-        if (notificationsError) {
-            console.error('Failed to fetch notifications:', notificationsError.message);
-        }
-        setNotifications(notificationsData || []);
+      setNotifications(data || []);
   }, [user]);
+
+  const refetchProfile = useCallback(async () => {
+    // This function is for manual profile refreshes, e.g., after an update
+    if (user) {
+        setLoading(true);
+        const { data: profileData, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+        if (error) {
+            console.error("Refetch profile error", error);
+        } else {
+            setProfile(profileData as Profile);
+        }
+        // Also refetch notifications as part of a full profile refresh
+        await fetchNotifications();
+        setLoading(false);
+    }
+  }, [user, fetchNotifications]);
+
 
   const value = { 
       user, 
@@ -107,8 +108,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       notifications,
       isAdmin: profile?.role === 'admin',
       loading,
-      refetchProfile: refetchAll,
-      fetchNotifications: justFetchNotifications,
+      refetchProfile,
+      fetchNotifications,
   };
 
   return (
@@ -117,5 +118,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     </AuthContext.Provider>
   );
 };
+
 
 
