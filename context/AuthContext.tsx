@@ -46,33 +46,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   const fetchUserAndProfile = useCallback(async (sessionUser: any | null) => {
-    setUser(sessionUser);
-    if (sessionUser) {
-        // Only update profile on success, don't clear it on failure
-        // to prevent logging out on transient network errors.
-        try {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', sessionUser.id)
-                .single();
+    // Wrap the entire operation in a try/finally to guarantee the loading state is turned off.
+    try {
+      setUser(sessionUser);
+      if (sessionUser) {
+          const { data, error } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', sessionUser.id)
+              .single();
 
-            if (error) {
-                // Log error but do not wipe profile. The user is still authenticated.
-                console.error('Error fetching profile on auth state change:', error.message || error);
-            } else {
-                setProfile(data as Profile);
-                await fetchNotifications(); // Fetch notifications after getting profile
-            }
-        } catch(e: any) {
-            console.error('Exception in profile fetch logic:', e.message || e);
-        }
-    } else {
-        // User is definitively logged out, so clear everything.
-        setProfile(null);
-        setNotifications([]);
+          if (error) {
+              // Log error but DO NOT wipe profile on transient network errors.
+              // The user is still authenticated, so we preserve the existing profile data.
+              console.error('Error fetching profile on auth state change:', error.message || error);
+          } else {
+              setProfile(data as Profile);
+              await fetchNotifications(); // Fetch notifications after getting profile
+          }
+      } else {
+          // User is definitively logged out, so clear everything.
+          setProfile(null);
+          setNotifications([]);
+      }
+    } catch(e: any) {
+        // This will catch any unexpected errors in the logic above.
+        console.error('Critical error in fetchUserAndProfile:', e.message || e);
+    } finally {
+        setLoading(false);
     }
-    setLoading(false);
   }, [fetchNotifications]);
 
   useEffect(() => {
@@ -109,3 +111,4 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     </AuthContext.Provider>
   );
 };
+
