@@ -1,4 +1,3 @@
-
 import { createClient } from '@supabase/supabase-js';
 
 // --- IMPORTANT ---
@@ -24,7 +23,11 @@ if (supabaseUrl.includes('YOUR_SUPABASE_URL') || supabaseAnonKey.includes('YOUR_
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-        fetch: fetch.bind(globalThis),
-    }
+  auth: {
+    persistSession: true,       // ✅ Add this line to persist session after refresh
+    autoRefreshToken: true,     // ✅ Keeps session active automatically
+  },
+  global: {
+    fetch: fetch.bind(globalThis),
+  },
 });
