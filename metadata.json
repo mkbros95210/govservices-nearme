@@ -1,0 +1,6 @@
+{
+  "name": "GovServices NearMe",
+  "description": "A web application to streamline the process of finding and booking various government services, featuring an AI assistant to help users navigate the available options. Users can navigate through service categories, view required documents, upload them, and proceed to payment in a seamless, user-friendly flow.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
