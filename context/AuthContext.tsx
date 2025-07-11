@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import { Profile, Notification } from '../types';
@@ -22,78 +23,83 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchNotifications = useCallback(async () => {
-    const sessionUser = user || supabase.auth.getSession()?.data?.session?.user;
-    if (!sessionUser) {
-        setNotifications([]);
-        return;
-    };
+  const fetchUserAndProfile = useCallback(async (sessionUser: any) => {
+    setUser(sessionUser);
 
-    try {
-        const { data, error } = await supabase
-            .from('notifications')
-            .select('*')
-            .eq('user_id', sessionUser.id)
-            .order('created_at', { ascending: false });
+    if (sessionUser) {
+      try {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', sessionUser.id)
+          .single();
+
+        if (profileError) {
+          throw new Error(`Failed to fetch profile: ${profileError.message}`);
+        }
         
-        if (error) throw error;
-        setNotifications(data as Notification[]);
+        setProfile(profileData as Profile);
+        
+        const { data: notificationsData, error: notificationsError } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', sessionUser.id)
+          .order('created_at', { ascending: false });
 
-    } catch (e: any) {
-        console.error('Error fetching notifications:', e.message || e);
+        if (notificationsError) {
+          console.error('Failed to fetch notifications:', notificationsError.message);
+        }
+        setNotifications(notificationsData || []);
+
+      } catch (error) {
+        console.error(error);
+        // On failure, ensure state is clean for this user
+        setProfile(null);
         setNotifications([]);
-    }
-  }, [user]);
-
-  const fetchUserAndProfile = useCallback(async (sessionUser: any | null) => {
-    // Wrap the entire operation in a try/finally to guarantee the loading state is turned off.
-    try {
-      setUser(sessionUser);
-      if (sessionUser) {
-          const { data, error } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', sessionUser.id)
-              .single();
-
-          if (error) {
-              // Log error but DO NOT wipe profile on transient network errors.
-              // The user is still authenticated, so we preserve the existing profile data.
-              console.error('Error fetching profile on auth state change:', error.message || error);
-          } else {
-              setProfile(data as Profile);
-              await fetchNotifications(); // Fetch notifications after getting profile
-          }
-      } else {
-          // User is definitively logged out, so clear everything.
-          setProfile(null);
-          setNotifications([]);
       }
-    } catch(e: any) {
-        // This will catch any unexpected errors in the logic above.
-        console.error('Critical error in fetchUserAndProfile:', e.message || e);
-    } finally {
-        setLoading(false);
+    } else {
+      // User is logged out, clear all data
+      setProfile(null);
+      setNotifications([]);
     }
-  }, [fetchNotifications]);
+  }, []);
 
   useEffect(() => {
-    const getInitialSession = async () => {
-        const { data: { session } } = await supabase.auth.getSession();
+    // This effect runs once on mount to set up the auth listener.
+    // It is the single source of truth for auth state.
+    setLoading(true);
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
         await fetchUserAndProfile(session?.user ?? null);
-    };
-
-    getInitialSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setLoading(true);
-      await fetchUserAndProfile(session?.user ?? null);
-    });
+        setLoading(false);
+      }
+    );
 
     return () => {
-      subscription?.unsubscribe();
+      authListener.subscription.unsubscribe();
     };
   }, [fetchUserAndProfile]);
+  
+  const refetchAll = useCallback(async () => {
+    if (user) {
+        setLoading(true);
+        await fetchUserAndProfile(user);
+        setLoading(false);
+    }
+  }, [user, fetchUserAndProfile]);
+  
+  const justFetchNotifications = useCallback(async () => {
+      if (!user) return;
+      const { data: notificationsData, error: notificationsError } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        if (notificationsError) {
+            console.error('Failed to fetch notifications:', notificationsError.message);
+        }
+        setNotifications(notificationsData || []);
+  }, [user]);
 
   const value = { 
       user, 
@@ -101,8 +107,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       notifications,
       isAdmin: profile?.role === 'admin',
       loading,
-      refetchProfile: () => user ? fetchUserAndProfile(user) : Promise.resolve(),
-      fetchNotifications,
+      refetchProfile: refetchAll,
+      fetchNotifications: justFetchNotifications,
   };
 
   return (
@@ -111,4 +117,5 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     </AuthContext.Provider>
   );
 };
+
 
